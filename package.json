@@ -1,0 +1,14 @@
+{
+  "name": "permissionlessbridge-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.1.0",
+    "ethers-utils": "^2.1.11",
+    "express": "^4.18.2",
+    "jayson": "^4.0.0",
+    "level": "^8.0.0",
+    "level-js": "^6.1.0"
+  }
+}
