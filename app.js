@@ -33,61 +33,100 @@ const server = new jayson.Server({
     fax_setTrustedGateway: (args, callback) => { },
     fax_setTrustedToken: (args, callback) => { },
     fax_getTokenInfo: (args, callback) => {
-        db_tokenInfos.get(args[0], { asBuffer: false }, async (e, res) => {
-            var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
-            console.log(JSON.stringify(tokenInfo));
+        try {
+            const id = args[0];
+            console.log(`id : ${id}`);
+            db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
+                var tokenInfo = formatTokenInfo(JSON.parse(res));
+                //var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
+                console.log(JSON.stringify(tokenInfo));
 
-            callback(null, tokenInfo);
-        });
+                callback(null, tokenInfo);
+
+
+            });
+        } catch (error) {
+            callback(null, JSON.stringify(error));
+        }
     },
     fax_submitTokenInfo: async (args, callback) => {
-        var deployer = ethers.getAddress(args[0].deployer);
-        var id = deployer.toString().toLowerCase() + ":" + args[0].projectName;
-        if (containsSpecialChars(id)) {
-            callback(null, "invalid character");
-        } else {
-            var tokenInfo = {
-                deployer: deployer,
-                projectName: args[0].projectName,
-                configs: {}
-            };
-            for (const chainID in args[0].configs) {
-                const element = args[0].configs[chainID];
-                tokenInfo.configs[chainID] = {
-                    type: element.type !== null ? element.type : "",
-                    logo: element.logo !== null ? element.logo : "",
-                    token: element.token !== null ? element.token : "",
+        try {
+            var deployer = ethers.getAddress(args[0].deployer);
+            var id = deployer.toString().toLowerCase() + ":" + args[0].projectName;
+            if (containsSpecialChars(id)) {
+                callback(null, "invalid character");
+            } else {
+                var tokenInfo = {
+                    deployer: deployer,
+                    projectName: args[0].projectName,
+                    configs: {}
+                };
+                for (var i = 0; i < args[0].configs.length; i++) {
+                    const element = args[0].configs[i];
+                    const chainid = args[0].configs[i].chainId;
+                    tokenInfo.configs["" + chainid] = {
+                        type: element.type !== null ? element.type : "",
+                        logo: element.logo !== null ? element.logo : "",
+                        token: element.token !== null ? element.token : "",
 
-                    name: element.name !== null ? element.name : "",
-                    symbol: element.symbol !== null ? element.symbol : "",
-                    decimals: element.decimals !== null ? element.decimals : null,
+                        name: element.name !== null ? element.name : "",
+                        symbol: element.symbol !== null ? element.symbol : "",
+                        decimals: element.decimals !== null ? element.decimals : null,
 
-                    gateway: element.gateway !== null ? element.gateway : "",
+                        gateway: element.gateway !== null ? element.gateway : "",
+                    }
                 }
+
+                tokenInfo.configs = Object.keys(tokenInfo.configs).sort().reduce(
+                    (obj, key) => {
+                        obj[key] = tokenInfo.configs[key];
+                        return obj;
+                    },
+                    {}
+                );
+
+                var payload = formatTokenInfo(tokenInfo);
+                console.log(`payload : ${JSON.stringify(payload)}`);
+
+                var res = ethers.verifyMessage(JSON.stringify(payload), args[0].signature);
+                console.log(`res : ${res}`);
+                if (res !== deployer) {
+                    callback(null, "fail to verify signature");
+                    return;
+                }
+
+                await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
+                callback(null, id);
             }
-
-            tokenInfo.configs = Object.keys(tokenInfo.configs).sort().reduce(
-                (obj, key) => {
-                    obj[key] = tokenInfo.configs[key];
-                    return obj;
-                },
-                {}
-            );
-
-            console.log(`payload : ${JSON.stringify(tokenInfo)}`);
-
-            var res = ethers.verifyMessage(JSON.stringify(tokenInfo), args[0].signature);
-            console.log(`res : ${res}`);
-            if (res !== deployer) {
-                callback(null, "fail to verify signature");
-                return;
-            }
-
-            await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
-            callback(null, id);
+        } catch (error) {
+            callback(null, JSON.stringify(error));
         }
     }
 });
+
+const formatTokenInfo = (tokenInfo1) => {
+    if (tokenInfo1 === null || tokenInfo1 === undefined) {
+        return "not found";
+    }
+    var tokenInfo = {
+        deployer: tokenInfo1.deployer,
+        projectName: tokenInfo1.projectName,
+        configs: [],
+    };
+    for (const chainID in tokenInfo1.configs) {
+        tokenInfo.configs.push({
+            type: tokenInfo1.configs[chainID].type,
+            chainId: chainID,
+            logo: tokenInfo1.configs[chainID].logo,
+            token: tokenInfo1.configs[chainID].token,
+            name: tokenInfo1.configs[chainID].name,
+            symbol: tokenInfo1.configs[chainID].symbol,
+            decimals: tokenInfo1.configs[chainID].decimals,
+            gateway: tokenInfo1.configs[chainID].gateway,
+        });
+    }
+    return tokenInfo;
+}
 
 const checkTrustedAddresses = async (tokenInfo) => {
     for (const key in tokenInfo.configs) {
