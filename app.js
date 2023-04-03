@@ -24,7 +24,7 @@ const checkChainIDs = async () => {
     });
 };
 
-checkChainIDs();
+//checkChainIDs();
 
 const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 
@@ -35,19 +35,40 @@ const server = new jayson.Server({
     fax_getTokenInfo: (args, callback) => {
         try {
             const id = args[0];
-            console.log(`id : ${id}`);
             db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
-                var tokenInfo = formatTokenInfo(JSON.parse(res));
-                //var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
-                console.log(JSON.stringify(tokenInfo));
+                try {
+                    var tokenInfo = formatTokenInfo(JSON.parse(res));
+                    //var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
 
-                callback(null, tokenInfo);
-
+                    callback(null, tokenInfo);
+                } catch (error) {
+                    callback(null, JSON.stringify(error));
+                }
 
             });
         } catch (error) {
             callback(null, JSON.stringify(error));
         }
+    },
+    fax_getTokenInfos: async (args, callback) => {
+        try {
+            var tokenInfos = [];
+            for await (const id of args) {
+                const value = await db_tokenInfos.get(id);
+                var tokenInfo = formatTokenInfo(JSON.parse(value));
+                tokenInfos.push(tokenInfo);
+            }
+            callback(null, tokenInfos);
+        } catch (error) {
+            callback(null, JSON.stringify(error));
+        }
+    },
+    fax_getBridgeList: async (args, callback) => {
+        var keys = [];
+        for await (const [key, value] of db_tokenInfos.iterator({})) {
+            keys.push(key);
+        }
+        callback(null, keys);
     },
     fax_submitTokenInfo: async (args, callback) => {
         try {
