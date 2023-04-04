@@ -106,7 +106,12 @@ const server = new jayson.Server({
                     {}
                 );
 
-                var payload = formatTokenInfo(tokenInfo);
+                var payload = {
+                    deployer: tokenInfo.deployer,
+                    projectName: tokenInfo.projectName,
+                    configs: args[0].configs
+                }
+                //var payload = formatTokenInfo(tokenInfo);
                 console.log(`payload : ${JSON.stringify(payload)}`);
 
                 var res = ethers.verifyMessage(JSON.stringify(payload), args[0].signature);
