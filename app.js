@@ -32,14 +32,24 @@ const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 const server = new jayson.Server({
     fax_setTrustedGateway: (args, callback) => { },
     fax_setTrustedToken: (args, callback) => { },
-    fax_getTokenInfo: (args, callback) => {
+    fax_getTokenInfo: async (args, callback) => {
         try {
             const id = args[0];
             db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
                 try {
                     var tokenInfo = formatTokenInfo(JSON.parse(res));
                     //var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
-
+                    tokenInfo.verified = 0;
+                    try {
+                        const isTrusted = await db_tokenInfos.get("trust:" + id);
+                        if (isTrusted) {
+                            tokenInfo.verified = 1;
+                        } else {
+                            tokenInfo.verified = 0;
+                        }
+                    } catch (error) {
+                        tokenInfo.verified = 0;
+                    }
                     callback(null, tokenInfo);
                 } catch (error) {
                     callback(null, JSON.stringify(error));
@@ -56,6 +66,17 @@ const server = new jayson.Server({
             for await (const id of args) {
                 const value = await db_tokenInfos.get(id);
                 var tokenInfo = formatTokenInfo(JSON.parse(value));
+
+                try {
+                    const isTrusted = await db_tokenInfos.get("trust:" + id);
+                    if (isTrusted) {
+                        tokenInfo.verified = 1;
+                    } else {
+                        tokenInfo.verified = 0;
+                    }
+                } catch (error) {
+                    tokenInfo.verified = 0;
+                }
                 tokenInfos.push(tokenInfo);
             }
             callback(null, tokenInfos);
