@@ -200,7 +200,7 @@ const isStandardBridgeToken = async (chainid, token) => {
 }
 
 function containsSpecialChars(str) {
-    const specialChars = `\ \`!@#$%^&*()_+=\[\]{};'"\\|,.<>\/?~`;
+    const specialChars = `\`!@#$%^&*()_+=\[\]{};'"\\|,.<>\/?~`;
 
     const result = specialChars.split('').some(specialChar => {
         if (str.includes(specialChar)) {
