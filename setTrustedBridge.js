@@ -17,7 +17,7 @@ const removeTrustedBridge = async (ids) => {
 
 async function main() {
     await setTrustedBridge([
-        "0x7fa4b6f62ff79352877b3411ed4101c394a711d5:zz-token-bridge"
+        "0x9c3d7ab444055dcd652ff418c0f12032f72edb0e:Crypto fax"
     ]);
 }
 

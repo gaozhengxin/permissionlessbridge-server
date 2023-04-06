@@ -68,9 +68,6 @@ const server = new jayson.Server({
                 const value = await db_tokenInfos.get(id);
                 var tokenInfo = formatTokenInfo(JSON.parse(value));
 
-                if (tokenInfo.deployer === undefined || tokenInfo.projectName === undefined) {
-                    continue;
-                }
                 try {
                     const isTrusted = await db_trustedBridges.get("trust:" + id);
                     if (isTrusted) {
