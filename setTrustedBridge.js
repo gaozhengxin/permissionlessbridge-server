@@ -1,17 +1,17 @@
 const { Level } = require('level');
-const db_tokenInfos = new Level("tokenInfos");
+const db_trustedBridges = new Level("trustedBridges");
 
 const setTrustedBridge = async (ids) => {
     for (var i = 0; i < ids.length; i++) {
         const id = "trust:" + ids[i]
-        await db_tokenInfos.put(id, true);
+        await db_trustedBridges.put(id, true);
     }
 }
 
 const removeTrustedBridge = async (ids) => {
     for (var i = 0; i < ids.length; i++) {
         const id = "trust:" + ids[i]
-        await db_tokenInfos.put(id, false);
+        await db_trustedBridges.put(id, false);
     }
 }
 

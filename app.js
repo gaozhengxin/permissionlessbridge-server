@@ -3,6 +3,7 @@ const { ethers } = require("ethers");
 
 const { Level } = require('level');
 const db_tokenInfos = new Level("tokenInfos");
+const db_trustedBridges = new Level("trustedBridges");
 
 const trustedGatewayCodeHash = new Map();
 trustedGatewayCodeHash.set("0x2a81d1cd005c72ef885fb17449d1067fb1136d38ddfea365e7efd3f452b3b423", 1); // gateway mint burn v1
@@ -67,8 +68,11 @@ const server = new jayson.Server({
                 const value = await db_tokenInfos.get(id);
                 var tokenInfo = formatTokenInfo(JSON.parse(value));
 
+                if (tokenInfo.deployer === undefined || tokenInfo.projectName === undefined) {
+                    continue;
+                }
                 try {
-                    const isTrusted = await db_tokenInfos.get("trust:" + id);
+                    const isTrusted = await db_trustedBridges.get("trust:" + id);
                     if (isTrusted) {
                         tokenInfo.verified = 1;
                     } else {
