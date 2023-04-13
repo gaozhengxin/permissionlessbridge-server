@@ -79,6 +79,7 @@ const server = new jayson.Server({
                 } catch (error) {
                     tokenInfo.verified = 0;
                 }
+                tokenInfo.maxTxAmount = 0;
                 tokenInfos.push(tokenInfo);
             }
             callback(null, tokenInfos);
