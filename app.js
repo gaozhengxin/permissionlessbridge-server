@@ -51,7 +51,9 @@ const server = new jayson.Server({
                     } catch (error) {
                         tokenInfo.verified = 0;
                     }
-                    tokenInfo.maxTxAmount = 0;
+                    for (var i = 0; i < tokenInfo.configs.length; i++) {
+                        tokenInfo.configs[i].maxTxAmount = 0;
+                    }
                     callback(null, tokenInfo);
                 } catch (error) {
                     callback(null, JSON.stringify(error));
@@ -79,7 +81,9 @@ const server = new jayson.Server({
                 } catch (error) {
                     tokenInfo.verified = 0;
                 }
-                tokenInfo.maxTxAmount = 0;
+                for (var i = 0; i < tokenInfo.configs.length; i++) {
+                    tokenInfo.configs[i].maxTxAmount = 0;
+                }
                 tokenInfos.push(tokenInfo);
             }
             callback(null, tokenInfos);
