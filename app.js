@@ -50,6 +50,105 @@ const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 2. get gateway balance
 */
 
+const fax_getTokenInfos = async (args, callback) => {
+    var checkStatus = false;
+    switch (args[0]) {
+        case true:
+            checkStatus = true;
+        case "true":
+            checkStatus = true;
+        default:
+    }
+    try {
+        var tokenInfos = [];
+        for await (const id of args) {
+            if (id === true || id === "true" || id === false || id === "false") {
+                continue;
+            }
+
+            const value = await db_tokenInfos.get(id);
+            var tokenInfo = formatTokenInfo(JSON.parse(value));
+
+            try {
+                const isTrusted = await db_trustedBridges.get("trust:" + id);
+                if (isTrusted) {
+                    tokenInfo.verified = 1;
+                } else {
+                    tokenInfo.verified = 0;
+                }
+            } catch (error) {
+                tokenInfo.verified = 0;
+            }
+            for (var i = 0; i < tokenInfo.configs.length; i++) {
+                tokenInfo.configs[i].maxTxAmount = "";
+            }
+            tokenInfos.push(tokenInfo);
+        }
+        if (checkStatus) {
+            for (var i = 0; i < tokenInfos.length; i++) {
+                for (var j = 0; j < tokenInfos[i].configs.length; j++) {
+                    if (tokenInfos[i].configs[j].type == "pool") {
+                        // check balance
+                        const calldata = "0x70a08231000000000000000000000000" + tokenInfos[i].configs[j].gateway.toLowerCase().replace("0x", "");
+                        try {
+                            const key_lpCache = (tokenInfos[i].configs[j].chainId + ":" + tokenInfos[i].configs[j].token + ":" + tokenInfos[i].configs[j].gateway).toLowerCase();
+                            console.log(`key_lpCache : ${key_lpCache}`);
+                            try {
+                                const bal_cache = await db_lpCache.get(key_lpCache);
+                                const bal_cache_obj = JSON.parse(bal_cache);
+                                if (bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - 600000) {
+                                    console.log(`use cache bal : ${JSON.stringify(bal_cache_obj)}`);
+                                    tokenInfos[i].configs[j].liquidity = bal_cache_obj.value;
+                                    break;
+                                }
+                            } catch (error) {
+                            }
+                            if (providers[tokenInfos[i].configs[j].chainId] !== undefined && providers[tokenInfos[i].configs[j].chainId] !== null) {
+                                let bal_hex = await providers[tokenInfos[i].configs[j].chainId].call({ to: tokenInfos[i].configs[j].token, data: calldata });
+                                let bal = parseInt(bal_hex, 16).toString();
+                                tokenInfos[i].configs[j].liquidity = bal;
+                                const bal_cache_obj = { timestamp: Date.now(), value: bal };
+                                console.log(`put cache obj : ${JSON.stringify(bal_cache_obj)}`);
+                                await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
+                                const bal_cache_retrieve = await db_lpCache.get(key_lpCache);
+                                console.log(`retrieve cache obj : ${bal_cache_retrieve}`);
+                            } else {
+                                tokenInfos[i].configs[j].liquidity = JSON.stringify({ error: {} });
+                            }
+                        } catch (error) {
+                            tokenInfos[i].configs[j].liquidity = JSON.stringify({ error: error });
+                        }
+                    }
+                }
+            }
+        }
+        callback(null, tokenInfos);
+    } catch (error) {
+        callback(null, JSON.stringify(error));
+    }
+};
+
+const fax_getBridgeList = async (args, callback) => {
+    var keys = [];
+    for await (const [key, value] of db_tokenInfos.iterator({})) {
+        keys.push(key);
+    }
+    callback(null, keys);
+};
+
+const fax_getAllTokenInfos = async (args, callback) => {
+    var checkStatus = false;
+    if (args.length > 0 && args[0] == true) {
+        checkStatus = true;
+    }
+    fax_getBridgeList([], (res, keys) => {
+        if (res == null && keys.length > 0) {
+            const args1 = [].concat([checkStatus], keys);
+            fax_getTokenInfos(args1, callback);
+        }
+    });
+};
+
 // create a server
 const server = new jayson.Server({
     fax_setTrustedGateway: (args, callback) => { },
@@ -85,90 +184,9 @@ const server = new jayson.Server({
             callback(null, JSON.stringify(error));
         }
     },
-    fax_getTokenInfos: async (args, callback) => {
-        var checkStatus = false;
-        switch (args[0]) {
-            case true:
-                checkStatus = true;
-            case "true":
-                checkStatus = true;
-            default:
-        }
-        try {
-            var tokenInfos = [];
-            for await (const id of args) {
-                if (id === true || id === "true" || id === false || id === "false") {
-                    continue;
-                }
-
-                const value = await db_tokenInfos.get(id);
-                var tokenInfo = formatTokenInfo(JSON.parse(value));
-
-                try {
-                    const isTrusted = await db_trustedBridges.get("trust:" + id);
-                    if (isTrusted) {
-                        tokenInfo.verified = 1;
-                    } else {
-                        tokenInfo.verified = 0;
-                    }
-                } catch (error) {
-                    tokenInfo.verified = 0;
-                }
-                for (var i = 0; i < tokenInfo.configs.length; i++) {
-                    tokenInfo.configs[i].maxTxAmount = "";
-                }
-                tokenInfos.push(tokenInfo);
-            }
-            if (checkStatus) {
-                for (var i = 0; i < tokenInfos.length; i++) {
-                    for (var j = 0; j < tokenInfos[i].configs.length; j++) {
-                        if (tokenInfos[i].configs[j].type == "pool") {
-                            // check balance
-                            const calldata = "0x70a08231000000000000000000000000" + tokenInfos[i].configs[j].gateway.toLowerCase().replace("0x", "");
-                            try {
-                                const key_lpCache = (tokenInfos[i].configs[j].chainId + ":" + tokenInfos[i].configs[j].token + ":" + tokenInfos[i].configs[j].gateway).toLowerCase();
-                                console.log(`key_lpCache : ${key_lpCache}`);
-                                try {
-                                    const bal_cache = await db_lpCache.get(key_lpCache);
-                                    const bal_cache_obj = JSON.parse(bal_cache);
-                                    if (bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - 600000) {
-                                        console.log(`use cache bal : ${JSON.stringify(bal_cache_obj)}`);
-                                        tokenInfos[i].configs[j].liquidity = bal_cache_obj.value;
-                                        break;
-                                    }
-                                } catch (error) {
-                                }
-                                if (providers[tokenInfos[i].configs[j].chainId] !== undefined && providers[tokenInfos[i].configs[j].chainId] !== null) {
-                                    let bal_hex = await providers[tokenInfos[i].configs[j].chainId].call({ to: tokenInfos[i].configs[j].token, data: calldata });
-                                    let bal = parseInt(bal_hex, 16).toString();
-                                    tokenInfos[i].configs[j].liquidity = bal;
-                                    const bal_cache_obj = { timestamp: Date.now(), value: bal };
-                                    console.log(`put cache obj : ${JSON.stringify(bal_cache_obj)}`);
-                                    await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
-                                    const bal_cache_retrieve = await db_lpCache.get(key_lpCache);
-                                    console.log(`retrieve cache obj : ${bal_cache_retrieve}`);
-                                } else {
-                                    tokenInfos[i].configs[j].liquidity = JSON.stringify({ error: {} });
-                                }
-                            } catch (error) {
-                                tokenInfos[i].configs[j].liquidity = JSON.stringify({ error: error });
-                            }
-                        }
-                    }
-                }
-            }
-            callback(null, tokenInfos);
-        } catch (error) {
-            callback(null, JSON.stringify(error));
-        }
-    },
-    fax_getBridgeList: async (args, callback) => {
-        var keys = [];
-        for await (const [key, value] of db_tokenInfos.iterator({})) {
-            keys.push(key);
-        }
-        callback(null, keys);
-    },
+    fax_getTokenInfos: fax_getTokenInfos,
+    fax_getAllTokenInfos: fax_getAllTokenInfos,
+    fax_getBridgeList: fax_getBridgeList,
     fax_submitTokenInfo: async (args, callback) => {
         try {
             var deployer = ethers.getAddress(args[0].deployer);
