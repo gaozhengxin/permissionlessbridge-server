@@ -1,5 +1,5 @@
 const jayson = require('jayson');
-const { ethers } = require("ethers");
+const { ethers, AbiCoder } = require("ethers");
 
 const { Level } = require('level');
 const db_tokenInfos = new Level("tokenInfos");
@@ -15,6 +15,10 @@ const db_lpCache = new Level("lpCache");
 
 var providers = {}
 
+const cacheTimeout = 600000;
+//const cacheTimeout = 0;
+const rpcTimeout = 15000;
+
 const initProvider = async (chainId, url) => {
     console.log(`chainid : ${chainId}, url : ${url}`);
     for (; true;) {
@@ -24,7 +28,7 @@ const initProvider = async (chainId, url) => {
             return provider;
         } catch (error) {
             console.warn(`create provider error : ${JSON.stringify({ chainid: chainId, error: error })}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, rpcTimeout));
             continue;
         }
 
@@ -42,6 +46,16 @@ const initProviders = async () => {
 }
 
 initProviders();
+
+const multicall = {
+    5: "0x84e9a6F9D240FdD33801f7135908BfA16866939A",
+    97: "0x4BfBe41c39481747D3a98C5bee320bE5F3C9fd70",
+    4002: "0x6E3bF2fFf13e18413D3780f93753D6CFf5AEE3e1",
+    1287: "0x5fC17416925789E0852FBFcd81c490ca4abc51F9",
+    43113: "0xf27Ee99622C3C9b264583dACB2cCE056e194494f",
+    420: "0x922D641a426DcFFaeF11680e5358F34d97d112E1",
+    421613: "0x7C598c96D02398d89FbCb9d41Eab3DF0C16F227D",
+};
 
 const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 
@@ -84,7 +98,9 @@ const fax_getTokenInfos = async (args, callback) => {
             }
             tokenInfos.push(tokenInfo);
         }
+        var promises = []
         if (checkStatus) {
+            var calls = {};
             for (var i = 0; i < tokenInfos.length; i++) {
                 for (var j = 0; j < tokenInfos[i].configs.length; j++) {
                     if (tokenInfos[i].configs[j].type == "pool") {
@@ -96,7 +112,7 @@ const fax_getTokenInfos = async (args, callback) => {
                             try {
                                 const bal_cache = await db_lpCache.get(key_lpCache);
                                 const bal_cache_obj = JSON.parse(bal_cache);
-                                if (bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - 600000) {
+                                if (bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - cacheTimeout) {
                                     console.log(`use cache bal : ${JSON.stringify(bal_cache_obj)}`);
                                     tokenInfos[i].configs[j].liquidity = bal_cache_obj.value;
                                     break;
@@ -104,14 +120,17 @@ const fax_getTokenInfos = async (args, callback) => {
                             } catch (error) {
                             }
                             if (providers[tokenInfos[i].configs[j].chainId] !== undefined && providers[tokenInfos[i].configs[j].chainId] !== null) {
-                                let bal_hex = await providers[tokenInfos[i].configs[j].chainId].call({ to: tokenInfos[i].configs[j].token, data: calldata });
-                                let bal = parseInt(bal_hex, 16).toString();
-                                tokenInfos[i].configs[j].liquidity = bal;
-                                const bal_cache_obj = { timestamp: Date.now(), value: bal };
-                                console.log(`put cache obj : ${JSON.stringify(bal_cache_obj)}`);
-                                await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
-                                const bal_cache_retrieve = await db_lpCache.get(key_lpCache);
-                                console.log(`retrieve cache obj : ${bal_cache_retrieve}`);
+                                if (calls[tokenInfos[i].configs[j].chainId] == undefined) {
+                                    calls[tokenInfos[i].configs[j].chainId] = [];
+                                }
+                                calls[tokenInfos[i].configs[j].chainId].push({
+                                    token: tokenInfos[i].configs[j].token,
+                                    gateway: tokenInfos[i].configs[j].gateway,
+                                    bridgeIdx: i,
+                                    gatewayIdx: j,
+                                    calldata: calldata
+                                });
+                                tokenInfos[i].configs[j].liquidity = "";
                             } else {
                                 tokenInfos[i].configs[j].liquidity = JSON.stringify({ error: {} });
                             }
@@ -121,9 +140,68 @@ const fax_getTokenInfos = async (args, callback) => {
                     }
                 }
             }
+            console.log(`calls : ${JSON.stringify(calls)}`);
+            var batches = {};
+            const batchSize = 50;
+            for (const key in calls) {
+                console.log(`calls : ${JSON.stringify(calls[key])}`);
+                var k = 0;
+                for (var i = 0; i < calls[key].length; i++) {
+                    if (batches[key + ":" + k / batchSize] == undefined) {
+                        batches[key + ":" + k / batchSize] = { chainId: key, batchLength: 0 };
+                    }
+                    batches[key + ":" + k / batchSize][i] = calls[key][i];
+                    batches[key + ":" + k / batchSize].batchLength = k % batchSize + 1;
+                    k++;
+                }
+            }
+            console.log(`batches : ${JSON.stringify(batches)}`);
+            var aggregateCalls = [];
+            for (const key in batches) {
+                let promise = (async () => {
+                    console.log(`handle batch : ${key}`);
+                    for (var i = 0; i < batches[key].batchLength; i++) {
+                        tokenInfos[batches[key][i + ""].bridgeIdx].configs[batches[key][i + ""].gatewayIdx].liquidity = "fetch liquidity timeout";
+                        aggregateCalls.push([batches[key][i + ""].token, batches[key][i + ""].calldata]);
+                    }
+
+                    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+                    var multicalldata = abiCoder.encode(["tuple(address, bytes)[]"], [aggregateCalls]);
+                    multicalldata = "0x252dba42" + multicalldata.replace("0x", "");
+
+                    let multicallres = await providers[batches[key].chainId].call({ to: multicall[batches[key].chainId], data: multicalldata, gasLimit: 100000 });
+                    //let multicallres = "0x0000000000000000000000000000000000000000000000000000000001c2f57e00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000";
+                    console.log(`multicall res : ${multicallres}`);
+                    let decodedRes = abiCoder.decode(["uint256", "bytes[]"], multicallres);
+                    console.log(`decodedRes : ${decodedRes}`);
+                    if (decodedRes.length !== 2 || decodedRes[1] === null || decodedRes[1] === undefined || decodedRes[1].length === 0) {
+                        return;
+                    }
+                    for (var i = 0; i < decodedRes[1].length; i++) {
+                        let bal = parseInt(decodedRes[1][i], 16).toString()
+                        const bridgeIdx = batches[key][i + ""].bridgeIdx;
+                        const gatewayIdx = batches[key][i + ""].gatewayIdx;
+                        tokenInfos[bridgeIdx].configs[gatewayIdx].liquidity = bal;
+
+                        const bal_cache_obj = { timestamp: Date.now(), value: bal };
+                        const key_lpCache = (tokenInfos[bridgeIdx].configs[gatewayIdx].chainId + ":" + tokenInfos[bridgeIdx].configs[gatewayIdx].token + ":" + tokenInfos[bridgeIdx].configs[gatewayIdx].gateway).toLowerCase();
+                        console.log(`put cache obj : ${JSON.stringify(bal_cache_obj)}`);
+                        await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
+                        //const bal_cache_retrieve = await db_lpCache.get(key_lpCache);
+                        //console.log(`retrieve cache obj : ${bal_cache_retrieve}`);
+                    }
+                })();
+                promises.push(promise);
+            }
+        }
+        if (promises.length > 0) {
+            let promise1 = new Promise(resolve => setTimeout(resolve, rpcTimeout));
+            let promise2 = Promise.all(promises);
+            await Promise.any([promise1, promise2]);
         }
         callback(null, tokenInfos);
     } catch (error) {
+        console.log(error);
         callback(null, JSON.stringify(error));
     }
 };
