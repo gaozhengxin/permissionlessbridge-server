@@ -147,11 +147,12 @@ const fax_getTokenInfos = async (args, callback) => {
                 console.log(`calls : ${JSON.stringify(calls[key])}`);
                 var k = 0;
                 for (var i = 0; i < calls[key].length; i++) {
-                    if (batches[key + ":" + k / batchSize] == undefined) {
-                        batches[key + ":" + k / batchSize] = { chainId: key, batchLength: 0 };
+                    const batchKey = key + ":" + Math.floor(k / batchSize);
+                    if (batches[batchKey] == undefined) {
+                        batches[batchKey] = { chainId: key, batchLength: 0 };
                     }
-                    batches[key + ":" + k / batchSize][i] = calls[key][i];
-                    batches[key + ":" + k / batchSize].batchLength = k % batchSize + 1;
+                    batches[batchKey][i] = calls[key][i];
+                    batches[batchKey].batchLength = k % batchSize + 1;
                     k++;
                 }
             }
