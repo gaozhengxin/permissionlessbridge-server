@@ -81,7 +81,11 @@ const fax_getTokenInfos = async (args, callback) => {
             }
 
             const value = await db_tokenInfos.get(id);
-            var tokenInfo = formatTokenInfo(JSON.parse(value));
+            let parsed = JSON.parse(value)
+            if (parsed.delisted === true) {
+                continue;
+            }
+            var tokenInfo = formatTokenInfo(parsed);
 
             try {
                 const isTrusted = await db_trustedBridges.get("trust:" + id);
@@ -237,7 +241,11 @@ const server = new jayson.Server({
             const id = args[0];
             db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
                 try {
-                    var tokenInfo = formatTokenInfo(JSON.parse(res));
+                    let parsed = JSON.parse(value)
+                    if (parsed.delisted === true) {
+                        callback(null, null);
+                    }
+                    var tokenInfo = formatTokenInfo(parsed);
                     //var tokenInfo = await checkTrustedAddresses(JSON.parse(res));
                     tokenInfo.verified = 0;
                     try {
@@ -323,6 +331,35 @@ const server = new jayson.Server({
         } catch (error) {
             callback(null, JSON.stringify(error));
         }
+    },
+    fax_delistBridge: async (args, callback) => {
+        const id = args[0].id;
+        const signature = args[0].signature;
+        const expire = args[0].expire; // s
+        if (expire * 1000 < Date.now()) {
+            callback(null, JSON.stringify("signature expired"));
+        }
+        db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
+            try {
+                var tokenInfo = formatTokenInfo(JSON.parse(res));
+                const payload = {
+                    deployer: tokenInfo.deployer,
+                    message: "delist bridge " + id,
+                    expire: expire
+                }
+                var res = ethers.verifyMessage(JSON.stringify(payload), signature);
+                console.log(`payload : ${JSON.stringify(payload)}`);
+                if (res !== tokenInfo.deployer) {
+                    callback(null, "fail to verify signature");
+                    return;
+                }
+                tokenInfo.delisted = true;
+                await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
+                callback(null, true);
+            } catch (error) {
+                callback(null, JSON.stringify(error));
+            }
+        });
     }
 });
 
