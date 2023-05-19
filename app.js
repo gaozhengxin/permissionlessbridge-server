@@ -337,7 +337,7 @@ const server = new jayson.Server({
         const signature = args[0].signature;
         const expire = args[0].expire; // s
         if (expire * 1000 < Date.now()) {
-            callback(null, JSON.stringify("signature expired"));
+            callback(null, "signature expired");
         }
         db_tokenInfos.get(id, { asBuffer: false }, async (e, res) => {
             try {
@@ -440,4 +440,4 @@ function containsSpecialChars(str) {
     return result;
 }
 
-server.http().listen(3000);
+server.http().listen(3131);
