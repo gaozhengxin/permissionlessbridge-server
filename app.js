@@ -4,7 +4,7 @@ const { ethers, AbiCoder } = require("ethers");
 const { Level } = require('level');
 const db_tokenInfos = new Level("tokenInfos");
 const db_trustedBridges = new Level("trustedBridges");
-const db_lpCache = new Level("lpCache");
+//const db_lpCache = new Level("lpCache");
 
 //const trustedGatewayCodeHash = new Map();
 //trustedGatewayCodeHash.set("0x2a81d1cd005c72ef885fb17449d1067fb1136d38ddfea365e7efd3f452b3b423", 1); // gateway mint burn v1
@@ -59,10 +59,7 @@ const multicall = {
 
 const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 
-/*
-1. create ethers rpc provider
-2. get gateway balance
-*/
+var lpCache = {}
 
 const fax_getTokenInfos = async (args, callback) => {
     var checkStatus = false;
@@ -114,9 +111,10 @@ const fax_getTokenInfos = async (args, callback) => {
                             const key_lpCache = (tokenInfos[i].configs[j].chainId + ":" + tokenInfos[i].configs[j].token + ":" + tokenInfos[i].configs[j].gateway).toLowerCase();
                             console.log(`key_lpCache : ${key_lpCache}`);
                             try {
-                                const bal_cache = await db_lpCache.get(key_lpCache);
-                                const bal_cache_obj = JSON.parse(bal_cache);
-                                if (bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - cacheTimeout) {
+                                //const bal_cache = await db_lpCache.get(key_lpCache);
+                                //const bal_cache_obj = JSON.parse(bal_cache);
+                                const bal_cache_obj = lpCache[key_lpCache];
+                                if (bal_cache_obj !== null && bal_cache_obj.timestamp !== undefined && bal_cache_obj.timestamp >= Date.now() - cacheTimeout) {
                                     console.log(`use cache bal : ${JSON.stringify(bal_cache_obj)}`);
                                     tokenInfos[i].configs[j].liquidity = bal_cache_obj.value;
                                     break;
@@ -191,7 +189,8 @@ const fax_getTokenInfos = async (args, callback) => {
                         const bal_cache_obj = { timestamp: Date.now(), value: bal };
                         const key_lpCache = (tokenInfos[bridgeIdx].configs[gatewayIdx].chainId + ":" + tokenInfos[bridgeIdx].configs[gatewayIdx].token + ":" + tokenInfos[bridgeIdx].configs[gatewayIdx].gateway).toLowerCase();
                         console.log(`put cache obj : ${JSON.stringify(bal_cache_obj)}`);
-                        await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
+                        //await db_lpCache.put(key_lpCache, JSON.stringify(bal_cache_obj));
+                        lpCache[key_lpCache] = bal_cache_obj;
                         //const bal_cache_retrieve = await db_lpCache.get(key_lpCache);
                         //console.log(`retrieve cache obj : ${bal_cache_retrieve}`);
                     }
