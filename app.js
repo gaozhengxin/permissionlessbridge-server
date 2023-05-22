@@ -333,7 +333,16 @@ const server = new jayson.Server({
         }
     },
     fax_delistBridge: async (args, callback) => {
-        const id = args[0].id;
+        var id = args[0].id;
+        let arr = id.split(":");
+        if (arr.length < 2) {
+            callback(null, "invalid id");
+            return;
+        }
+        id = arr[0].toLowerCase();
+        for (var i = 1; i < arr.length; i++) {
+            id = id.concat(":").concat(arr[i]);
+        }
         const signature = args[0].signature;
         const expire = args[0].expire; // s
         if (expire * 1000 < Date.now()) {
