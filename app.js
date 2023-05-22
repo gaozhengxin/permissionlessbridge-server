@@ -4,6 +4,7 @@ const { ethers, AbiCoder } = require("ethers");
 const { Level } = require('level');
 const db_tokenInfos = new Level("tokenInfos");
 const db_trustedBridges = new Level("trustedBridges");
+const db_signature = new Level("signature");
 //const db_lpCache = new Level("lpCache");
 
 //const trustedGatewayCodeHash = new Map();
@@ -319,11 +320,12 @@ const server = new jayson.Server({
 
                 var res = ethers.verifyMessage(JSON.stringify(payload), args[0].signature);
                 console.log(`res: ${res} `);
-                if (res !== deployer) {
+                if (res.toLowerCase() !== deployer.toLowerCase()) {
                     callback(null, "fail to verify signature");
                     return;
                 }
 
+                await db_signature.put("submit:".concat(id), JSON.stringify({ payload: payload, time: Date.now() }));
                 await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
                 callback(null, id);
             }
@@ -357,11 +359,13 @@ const server = new jayson.Server({
                 }
                 var res = ethers.verifyMessage(JSON.stringify(payload), signature);
                 console.log(`payload : ${JSON.stringify(payload)}`);
-                if (res !== tokenInfo.deployer) {
+                if (res.toLowerCase() !== tokenInfo.deployer.toLowerCase()) {
                     callback(null, "fail to verify signature");
                     return;
                 }
                 tokenInfo.delisted = true;
+
+                await db_signature.put("delist:".concat(id), JSON.stringify({ payload: payload, time: Date.now() }));
                 await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
                 callback(null, true);
             } catch (error) {
