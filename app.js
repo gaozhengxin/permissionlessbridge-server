@@ -62,6 +62,9 @@ const admin = "0x7fa4b6F62fF79352877B3411Ed4101C394a711D5";
 
 var lpCache = {}
 
+// iterate db after update 缺少数据找补
+var submitTokenInfoCache = {}
+
 const fax_getTokenInfos = async (args, callback) => {
     var checkStatus = false;
     switch (args[0]) {
@@ -214,6 +217,12 @@ const fax_getTokenInfos = async (args, callback) => {
 const fax_getBridgeList = async (args, callback) => {
     var keys = [];
     for await (const [key, value] of db_tokenInfos.iterator({})) {
+        if (submitTokenInfoCache[key] !== undefined) {
+            submitTokenInfoCache[key] = undefined;
+        }
+        keys.push(key);
+    }
+    for await (const [key, value] of Object.entries(submitTokenInfoCache)) {
         keys.push(key);
     }
     callback(null, keys);
@@ -327,6 +336,7 @@ const server = new jayson.Server({
 
                 await db_signature.put("submit:".concat(id), JSON.stringify({ payload: payload, time: Date.now() }));
                 await db_tokenInfos.put(id, JSON.stringify(tokenInfo));
+                submitTokenInfoCache[id] = JSON.stringify(tokenInfo);
                 callback(null, id);
             }
         } catch (error) {
